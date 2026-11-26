@@ -1,0 +1,205 @@
+name: Fork Proxy Build
+
+on:
+  push:
+    branches:
+      - feat/port-proxy
+  workflow_dispatch:
+    inputs:
+      sync_upstream:
+        description: "Sync upstream RankFTW/RHI main before building"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      target_sha: ${{ steps.resolve.outputs.target_sha }}
+
+    steps:
+      - name: Checkout feat/port-proxy
+        if: github.event_name == 'workflow_dispatch' && inputs.sync_upstream == true
+        uses: actions/checkout@v4
+        with:
+          ref: feat/port-proxy
+          fetch-depth: 0
+          token: ${{ secrets.SYNC_PAT || github.token }}
+
+      - name: Sync upstream RankFTW/RHI main
+        id: sync
+        if: github.event_name == 'workflow_dispatch' && inputs.sync_upstream == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git remote add upstream https://github.com/RankFTW/RHI.git
+          git fetch upstream main
+
+          git push origin upstream/main:refs/heads/main || true
+
+          BEFORE_SHA=$(git rev-parse HEAD)
+          if ! git merge upstream/main --no-edit; then
+            echo "::error::Merge conflict while merging upstream/main into feat/port-proxy. Conflicted files:"
+            git diff --name-only --diff-filter=U || true
+            exit 1
+          fi
+
+          AFTER_SHA=$(git rev-parse HEAD)
+          if [ "$BEFORE_SHA" != "$AFTER_SHA" ]; then
+            if ! git push origin feat/port-proxy; then
+              echo "::error::Failed to push merged feat/port-proxy to origin. If upstream modified .github/workflows/, GITHUB_TOKEN lacks 'workflow' scope — please configure a SYNC_PAT secret (repo + workflow) or click 'Sync fork' on GitHub first."
+              exit 1
+            fi
+          else
+            echo "feat/port-proxy is already up to date with upstream/main."
+          fi
+
+          echo "sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve target SHA
+        id: resolve
+        shell: bash
+        run: |
+          if [ -n "${{ steps.sync.outputs.sha }}" ]; then
+            echo "target_sha=${{ steps.sync.outputs.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "target_sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: sync-upstream
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync-upstream.outputs.target_sha || github.sha }}
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Pre-restore ClrMD (Microsoft.Diagnostics.Runtime) for loose deployment
+        shell: pwsh
+        run: |
+          $tmpProj = Join-Path $env:RUNNER_TEMP "clrmd-restore.csproj"
+          @'
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net8.0</TargetFramework>
+            </PropertyGroup>
+            <ItemGroup>
+              <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="3.1.512801" />
+            </ItemGroup>
+          </Project>
+          '@ | Set-Content -Path $tmpProj -Encoding UTF8
+          dotnet restore $tmpProj
+
+      - name: Publish RenoDXCommander (Release, win-x64)
+        shell: pwsh
+        run: |
+          $out = Join-Path $PWD "publish_out"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+
+          dotnet publish RenoDXCommander/RenoDXCommander.csproj `
+            -c Release `
+            -r win-x64 `
+            -p:PublishSingleFile=true `
+            -p:Platform=x64 `
+            --self-contained false `
+            -o $out
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          $dropOut = Join-Path $PWD "drophelper_out"
+          New-Item -ItemType Directory -Force -Path $dropOut | Out-Null
+          dotnet build RHI.DropHelper/RHI.DropHelper.csproj -c Release -o $dropOut -v quiet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+          foreach ($file in @("RHI.DropHelper.exe", "RHI.DropHelper.dll", "RHI.DropHelper.runtimeconfig.json")) {
+            $srcFile = Join-Path $dropOut $file
+            if (-not (Test-Path $srcFile)) {
+              Write-Error "Missing DropHelper output file: $srcFile"
+              exit 1
+            }
+            Copy-Item -Path $srcFile -Destination $out -Force
+          }
+          Copy-Item -Path "RenoDXCommander/icon.ico" -Destination $out -Force
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $PWD "RHI-Proxy-win-x64.zip"
+          if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
+          Compress-Archive -Path "publish_out/*" -DestinationPath $zipPath -CompressionLevel Optimal
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          $iscc = $null
+          $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+          if ($cmd) {
+            $iscc = $cmd.Source
+          } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+            $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          } else {
+            choco install innosetup -y
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($cmd) {
+              $iscc = $cmd.Source
+            } elseif (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe") {
+              $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+            }
+          }
+
+          if (-not $iscc) {
+            Write-Error "ISCC.exe not found after installation attempt."
+            exit 1
+          }
+
+          $publishDir = Join-Path $PWD "publish_out"
+          & $iscc "/DPublishDir=$publishDir" "/DInstallerOutputDir=$PWD" "RHI Setup.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RHI-Proxy-win-x64
+          path: |
+            RHI-Proxy-win-x64.zip
+            RHI-Setup.exe
+          retention-days: 14
+
+      - name: Create or update proxy-latest GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "proxy-latest"
+          $targetSha = "${{ needs.sync-upstream.outputs.target_sha || github.sha }}"
+          $notes = "Automated portable + installer build from ``feat/port-proxy`` ($targetSha)."
+          $exists = $true
+          gh release view $tag 2>$null | Out-Null
+          if ($LASTEXITCODE -ne 0) { $exists = $false }
+
+          if (-not $exists) {
+            gh release create $tag "RHI-Proxy-win-x64.zip" "RHI-Setup.exe" `
+              --target $targetSha `
+              --title "RHI Proxy (Latest)" `
+              --notes $notes
+          } else {
+            gh release upload $tag "RHI-Proxy-win-x64.zip" "RHI-Setup.exe" --clobber
+            gh release edit $tag --target $targetSha --notes $notes
+          }
