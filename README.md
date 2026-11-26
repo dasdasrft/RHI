@@ -17,7 +17,7 @@
 
 - **2026-11-26（汉化引擎 & 滚动防闪烁 Release）**
   - **新增零冲突全量简体中文汉化引擎**（`RenoDXCommander/ForkL10n/`、`SettingsHandler.Language.cs`）：
-    - 内嵌 `zh-CN.json` 词库（累计 **2,329 条精确匹配** + **354 条动态正则模板**），覆盖主界面、设置页、游戏详情面板、全部弹窗/右键菜单/Tooltip、以及 `OverlayWindow`（游戏内浮层）、`SetupWindow`（首次向导）、`UpdateLogWindow`（组件更新记录）三个独立次级窗口。
+    - 内嵌 `zh-CN.json` 词库（累计 **2,453 条精确匹配** + **363 条动态正则模板**），覆盖主界面、设置页、游戏详情面板、全部弹窗/右键菜单/Tooltip、以及 `OverlayWindow`（游戏内浮层）、`SetupWindow`（首次向导）、`UpdateLogWindow`（组件更新记录）三个独立次级窗口。
     - 严格保留 `ReShade`、`RenoDX`、`Luma`、`OptiScaler`、`DLSS`、`Streamline`、`Neural Rendering`、`MFG`、`HDR`、`SDR`、`VRR`、`G-Sync`、`ReBAR`、`DLDSR`、`DXVK`、`RTX HDR`、`INI`、`DLL`、`Shader`、`GitHub`、`Steam`、`GOG`、`Epic` 等专业术语。
     - 列表防闪烁优化：为 `TextBlock` 与 `ContentControl` 挂载同步 `RegisterPropertyChangedCallback` 属性监听，并拦截 `ListViewBase.ContainerContentChanging` 与 `ItemsRepeater.ElementPrepared` 虚拟化容器事件，在当前渲染帧内即时完成中文替换，消除快速滚动时的中英文闪烁。
     - 支持在 **设置 → 账号与数据源 → 界面语言** 中无重启切换中/英文，支持 `zh-CN.override.json` 本地覆盖与 `missing_l10n.txt` 漏译日志。
