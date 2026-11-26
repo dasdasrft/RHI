@@ -1,3 +1,24 @@
+<!-- [FORK-README-START] -->
+# RHI 中文代理增强版（Fork）
+
+> 本仓库基于上游 [RankFTW/RHI](https://github.com/RankFTW/RHI)，采用最小侵入方式（仅改动上游 2 行入口）新增了**本地端口代理**功能与 **GitHub Actions 自动同步打包工作流**，方便国内网络环境使用，并可随时无冲突同步上游更新。
+
+## 下载与使用
+
+1. 前往本仓库 **Releases (`proxy-latest`)** 下载最新版安装程序（`RHI-Setup.exe`）或便携压缩包（`RHI-Proxy-win-x64.zip`）。
+2. 打开 RHI 后进入 **Settings → Accounts & Data → Network Proxy**，选择代理模式（**System** 跟随系统 / **Direct** 直连 / **HTTP** / **SOCKS5**，默认地址 `127.0.0.1:7890`）。
+3. 点击 **Save & Apply** 即可热生效（无需重启），并可点击 **Test Connection** 测速验证连通性。
+
+## 中文更新日志（Changelog）
+
+- **2026-11-26**
+  - 新增独立本地端口代理模块（`Services/ProxyService.cs`、`SettingsHandler.Proxy.cs`），通过全局 `HttpClient.DefaultProxy` 实现热切换，支持 `System` / `Direct` / `HTTP` / `SOCKS5` 四种模式，配置以 `ForkProxy*` 键名独立持久化。
+  - 代理连通性测试改用不受 GitHub API 限流的 `HEAD https://github.com/robots.txt`，避免共享代理 IP 触发 403 限流。
+  - 新增独立 GitHub Actions 工作流（`.github/workflows/fork-proxy-build.yml`），支持网页一键同步上游源码并自动编译发布安装版 `.exe` 与便携版 `.zip` 至 `proxy-latest` Release。
+
+---
+<!-- [FORK-README-END] -->
+
 # RHI — ReShade HDR Installer
 
 **HDR, ReShade, DLSS and NVIDIA driver settings for your whole PC game library, from one window.**
