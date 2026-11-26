@@ -3,7 +3,6 @@
 
 using System.Diagnostics;
 using System.Net.Http;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using RenoDXCommander.Services;
@@ -233,6 +232,21 @@ public partial class SettingsHandler
     {
         if (_proxyTestBtn == null || _proxyStatusText == null) return;
 
+        var mode = SelectedProxyMode;
+        var (ok, testProxy, validationError) = ProxyService.TryCreateTestProxy(
+            mode,
+            _proxyHostBox?.Text,
+            _proxyPortBox?.Text);
+        if (!ok)
+        {
+            _proxyStatusText.Text = validationError ?? "Invalid proxy address.";
+            _proxyStatusText.Foreground = UIFactory.Brush(ResourceKeys.AccentRedBrush);
+            return;
+        }
+
+        var token = _window.LifetimeToken;
+        if (token.IsCancellationRequested) return;
+
         _proxyTestBtn.IsEnabled = false;
         _proxyStatusText.Text = "Testing connection to https://github.com/robots.txt ...";
         _proxyStatusText.Foreground = UIFactory.Brush(ResourceKeys.TextSecondaryBrush);
@@ -240,18 +254,27 @@ public partial class SettingsHandler
         var sw = Stopwatch.StartNew();
         try
         {
-            var http = App.Services.GetRequiredService<HttpClient>();
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            using var handler = new SocketsHttpHandler
+            {
+                UseProxy = mode != ProxyMode.Direct,
+                Proxy = testProxy,
+                ConnectTimeout = TimeSpan.FromSeconds(10),
+            };
+            using var http = new HttpClient(handler, disposeHandler: true);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+            cts.CancelAfter(TimeSpan.FromSeconds(10));
+
             using var req = new HttpRequestMessage(HttpMethod.Head, "https://github.com/robots.txt");
-            if (!http.DefaultRequestHeaders.Contains("User-Agent"))
-                req.Headers.TryAddWithoutValidation("User-Agent", "RHI/2.0");
+            req.Headers.TryAddWithoutValidation("User-Agent", "RHI/2.0");
+
             using var resp = await http.SendAsync(req, cts.Token);
             sw.Stop();
+            if (token.IsCancellationRequested) return;
 
             int code = (int)resp.StatusCode;
             if (code is >= 200 and < 400)
             {
-                _proxyStatusText.Text = $"Connected ({code} {resp.ReasonPhrase}, {sw.ElapsedMilliseconds} ms)";
+                _proxyStatusText.Text = $"Connected (HTTP {code}, {sw.ElapsedMilliseconds} ms)";
                 _proxyStatusText.Foreground = UIFactory.Brush(ResourceKeys.AccentGreenBrush);
             }
             else
@@ -260,15 +283,21 @@ public partial class SettingsHandler
                 _proxyStatusText.Foreground = UIFactory.Brush(ResourceKeys.AccentRedBrush);
             }
         }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            return;
+        }
         catch (Exception ex)
         {
             sw.Stop();
+            if (token.IsCancellationRequested) return;
             _proxyStatusText.Text = $"Failed ({sw.ElapsedMilliseconds} ms): {ex.Message}";
             _proxyStatusText.Foreground = UIFactory.Brush(ResourceKeys.AccentRedBrush);
         }
         finally
         {
-            _proxyTestBtn.IsEnabled = true;
+            if (!token.IsCancellationRequested)
+                _proxyTestBtn.IsEnabled = true;
         }
     }
 }

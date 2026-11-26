@@ -3,6 +3,7 @@
 // atomic snapshot swaps so changes take effect immediately without restart.
 
 using System.Net;
+using System.Net.Sockets;
 
 namespace RenoDXCommander.Services;
 
@@ -80,27 +81,33 @@ public sealed class ProxyService : IWebProxy
         }
     }
 
+    public static IWebProxy? SystemProxyFallback => _systemProxy;
+
     public (bool Ok, string? Error) SaveAndApply(ProxyMode mode, string? host, string? portText)
     {
-        var cleanHost = string.IsNullOrWhiteSpace(host) ? DefaultHost : host.Trim();
-        int port;
+        ProxyConfig config;
 
         if (mode is ProxyMode.Http or ProxyMode.Socks5)
         {
-            if (string.IsNullOrWhiteSpace(host))
-                return (false, "Proxy host cannot be empty.");
+            var (valid, validated, validationError) = TryValidateEndpoint(host, portText);
+            if (!valid || validated == null)
+                return (false, validationError ?? "Invalid proxy address.");
 
-            if (!int.TryParse(portText?.Trim(), out port) || port is < 1 or > 65535)
-                return (false, "Port must be between 1 and 65535.");
+            config = new ProxyConfig(mode, validated.Value.Host, validated.Value.Port);
         }
         else
         {
-            port = int.TryParse(portText?.Trim(), out var parsed) && parsed is >= 1 and <= 65535
+            // Preserve previously configured host/port when switching to System or Direct mode.
+            var current = _state.Config;
+            var preservedHost = !string.IsNullOrWhiteSpace(host) && TryNormalizeHost(host, out var normalizedHost, out _)
+                ? normalizedHost
+                : current.Host;
+            var preservedPort = int.TryParse(portText?.Trim(), out var parsed) && parsed is >= 1 and <= 65535
                 ? parsed
-                : DefaultPort;
+                : current.Port;
+            config = new ProxyConfig(mode, preservedHost, preservedPort);
         }
 
-        var config = new ProxyConfig(mode, cleanHost, port);
         var (state, error) = TryBuildState(config);
         if (state == null)
             return (false, error ?? "Invalid proxy address.");
@@ -119,6 +126,114 @@ public sealed class ProxyService : IWebProxy
 
         CrashReporter.Log($"[ProxyService.SaveAndApply] Applied mode={config.Mode}, endpoint={config.Host}:{config.Port}");
         return (true, null);
+    }
+
+    public static (bool Ok, IWebProxy? Proxy, string? Error) TryCreateTestProxy(
+        ProxyMode mode,
+        string? host,
+        string? portText)
+    {
+        if (mode == ProxyMode.Direct)
+            return (true, null, null);
+
+        if (mode == ProxyMode.System)
+            return (true, _systemProxy, null);
+
+        var (valid, endpoint, error) = TryValidateEndpoint(host, portText);
+        if (!valid || endpoint == null)
+            return (false, null, error ?? "Invalid proxy address.");
+
+        var (state, buildError) = TryBuildState(new ProxyConfig(mode, endpoint.Value.Host, endpoint.Value.Port));
+        if (state?.CustomProxy == null)
+            return (false, null, buildError ?? "Invalid proxy address.");
+
+        return (true, state.CustomProxy, null);
+    }
+
+    private static (bool Ok, (string Host, int Port)? Endpoint, string? Error) TryValidateEndpoint(
+        string? host,
+        string? portText)
+    {
+        if (!TryNormalizeHost(host, out var normalizedHost, out var hostError))
+            return (false, null, hostError);
+
+        if (!int.TryParse(portText?.Trim(), out int port) || port is < 1 or > 65535)
+            return (false, null, "Port must be between 1 and 65535.");
+
+        return (true, (normalizedHost, port), null);
+    }
+
+    private static bool TryNormalizeHost(string? rawHost, out string normalizedHost, out string? error)
+    {
+        normalizedHost = string.Empty;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(rawHost))
+        {
+            error = "Proxy host cannot be empty.";
+            return false;
+        }
+
+        var candidate = rawHost.Trim();
+        if (candidate.Contains("://", StringComparison.Ordinal) ||
+            candidate.IndexOfAny(['/', '\\', '?', '#', '@']) >= 0 ||
+            candidate.Any(char.IsWhiteSpace))
+        {
+            error = "Proxy host must be a hostname or IP address without scheme, path, or spaces.";
+            return false;
+        }
+
+        if (candidate.StartsWith('[') || candidate.EndsWith(']'))
+        {
+            if (!(candidate.StartsWith('[') && candidate.EndsWith(']') && candidate.Length > 2))
+            {
+                error = "Invalid IPv6 proxy host.";
+                return false;
+            }
+
+            var inner = candidate[1..^1];
+            if (!IPAddress.TryParse(inner, out var ipv6) || ipv6.AddressFamily != AddressFamily.InterNetworkV6)
+            {
+                error = "Invalid IPv6 proxy host.";
+                return false;
+            }
+
+            normalizedHost = $"[{ipv6}]";
+            return true;
+        }
+
+        if (IPAddress.TryParse(candidate, out var ip))
+        {
+            if (ip.AddressFamily == AddressFamily.InterNetworkV6)
+            {
+                normalizedHost = $"[{ip}]";
+                return true;
+            }
+
+            if (Uri.CheckHostName(candidate) == UriHostNameType.IPv4)
+            {
+                normalizedHost = candidate;
+                return true;
+            }
+
+            error = "Invalid IPv4 proxy host.";
+            return false;
+        }
+
+        if (candidate.Contains(':', StringComparison.Ordinal))
+        {
+            error = "Enter the port in the Port field, not in the Host field.";
+            return false;
+        }
+
+        if (Uri.CheckHostName(candidate) != UriHostNameType.Dns)
+        {
+            error = "Invalid proxy host.";
+            return false;
+        }
+
+        normalizedHost = candidate;
+        return true;
     }
 
     private static (ProxyState? State, string? Error) TryBuildState(ProxyConfig config)

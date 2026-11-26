@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Documents;
 using Microsoft.UI.Xaml.Media;
 using RenoDXCommander.Services;
+using RenoDXCommander.ViewModels;
 
 namespace RenoDXCommander.ForkL10n;
 
@@ -66,8 +67,11 @@ public static class VisualTreeTranslator
         private readonly WeakReference<Window> _windowRef;
         private readonly DispatcherQueue _dispatcher;
         private readonly DispatcherQueueTimer _throttleTimer;
+        private FrameworkElement? _hookedRoot;
+        private long _lastPassTicks;
         private bool _isTranslating;
         private bool _rootHooked;
+        private bool _disposed;
 
         public WindowAttachment(Window window)
         {
@@ -75,9 +79,11 @@ public static class VisualTreeTranslator
             _dispatcher = window.DispatcherQueue;
 
             _throttleTimer = _dispatcher.CreateTimer();
-            _throttleTimer.Interval = TimeSpan.FromMilliseconds(90);
+            _throttleTimer.Interval = TimeSpan.FromMilliseconds(32);
             _throttleTimer.IsRepeating = false;
-            _throttleTimer.Tick += (_, _) => RunTranslationPass();
+            _throttleTimer.Tick += OnThrottleTick;
+
+            window.Closed += OnWindowClosed;
 
             if (window.Content is FrameworkElement root)
             {
@@ -89,8 +95,53 @@ public static class VisualTreeTranslator
             }
         }
 
+        private void OnThrottleTick(DispatcherQueueTimer sender, object args) => RunTranslationPass();
+
+        private void OnRootLoaded(object sender, RoutedEventArgs e) => OnLayoutOrLoad();
+
+        private void OnRootLayoutUpdated(object? sender, object e) => OnLayoutOrLoad();
+
+        private void OnWindowClosed(object sender, WindowEventArgs args)
+        {
+            if (args.Handled) return;
+            Dispose();
+        }
+
+        private void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            _throttleTimer.Stop();
+            _throttleTimer.Tick -= OnThrottleTick;
+
+            if (_windowRef.TryGetTarget(out var win))
+            {
+                win.Activated -= OnFirstActivated;
+                win.Closed -= OnWindowClosed;
+                Attachments.Remove(win);
+            }
+
+            if (_hookedRoot != null)
+            {
+                _hookedRoot.Loaded -= OnRootLoaded;
+                _hookedRoot.LayoutUpdated -= OnRootLayoutUpdated;
+                _hookedRoot = null;
+            }
+
+            lock (LiveAttachments)
+            {
+                for (int i = LiveAttachments.Count - 1; i >= 0; i--)
+                {
+                    if (!LiveAttachments[i].TryGetTarget(out var target) || ReferenceEquals(target, this))
+                        LiveAttachments.RemoveAt(i);
+                }
+            }
+        }
+
         private void OnFirstActivated(object sender, WindowActivatedEventArgs args)
         {
+            if (_disposed) return;
             if (_windowRef.TryGetTarget(out var win))
             {
                 win.Activated -= OnFirstActivated;
@@ -101,37 +152,55 @@ public static class VisualTreeTranslator
 
         private void HookRoot(FrameworkElement root)
         {
-            if (_rootHooked) return;
+            if (_disposed || _rootHooked) return;
             _rootHooked = true;
+            _hookedRoot = root;
 
-            root.Loaded += (_, _) => SchedulePass();
-            root.LayoutUpdated += (_, _) =>
-            {
-                if (!_isTranslating)
-                    SchedulePass();
-            };
+            root.Loaded += OnRootLoaded;
+            root.LayoutUpdated += OnRootLayoutUpdated;
 
             if (root.IsLoaded)
-                SchedulePass();
+                OnLayoutOrLoad();
         }
 
         public void DispatchImmediatePass()
         {
+            if (_disposed) return;
             _dispatcher.TryEnqueue(RunTranslationPass);
         }
 
-        private void SchedulePass()
+        private void OnLayoutOrLoad()
         {
-            if (_isTranslating) return;
+            if (_disposed || _isTranslating) return;
+
+            long now = Environment.TickCount64;
+            if (now - _lastPassTicks >= 32)
+            {
+                if (_throttleTimer.IsRunning)
+                    _throttleTimer.Stop();
+                RunTranslationPass();
+            }
+            else
+            {
+                ScheduleTrailingPass();
+            }
+        }
+
+        private void ScheduleTrailingPass()
+        {
+            if (_disposed || _isTranslating) return;
             if (!_throttleTimer.IsRunning)
                 _throttleTimer.Start();
         }
 
         private void RunTranslationPass()
         {
-            if (_isTranslating) return;
+            if (_disposed || _isTranslating) return;
             if (!_windowRef.TryGetTarget(out var window)) return;
             if (window.Content is not FrameworkElement root) return;
+
+            if (_throttleTimer.IsRunning)
+                _throttleTimer.Stop();
 
             _isTranslating = true;
             try
@@ -156,9 +225,36 @@ public static class VisualTreeTranslator
             }
             finally
             {
+                _lastPassTicks = Environment.TickCount64;
                 _isTranslating = false;
             }
         }
+    }
+
+    private static bool ShouldSkipDynamicDataControl(DependencyObject node)
+    {
+        if (node is FrameworkElement fe)
+        {
+            switch (fe.Name)
+            {
+                case "DetailGameName":
+                case "DetailInstallPath":
+                case "AboutVersionText":
+                case "StatusBarVersionText":
+                    return true;
+            }
+        }
+
+        if (node is TextBlock tb && tb.DataContext is GameCardViewModel card)
+        {
+            if (string.Equals(tb.Text, card.GameName, StringComparison.Ordinal) ||
+                string.Equals(tb.Text, card.InstallPath, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void WalkSubtree(DependencyObject root, bool toChinese)
@@ -169,14 +265,28 @@ public static class VisualTreeTranslator
         while (stack.Count > 0)
         {
             var node = stack.Pop();
+            if (ShouldSkipDynamicDataControl(node))
+                continue;
+
             TranslateNode(node, toChinese);
 
-            int count = VisualTreeHelper.GetChildrenCount(node);
-            for (int i = count - 1; i >= 0; i--)
+            // Stop descending into text-input controls after translating Header/PlaceholderText.
+            if (node is TextBox or PasswordBox or AutoSuggestBox or NumberBox)
+                continue;
+
+            try
             {
-                var child = VisualTreeHelper.GetChild(node, i);
-                if (child != null)
-                    stack.Push(child);
+                int count = VisualTreeHelper.GetChildrenCount(node);
+                for (int i = count - 1; i >= 0; i--)
+                {
+                    var child = VisualTreeHelper.GetChild(node, i);
+                    if (child != null)
+                        stack.Push(child);
+                }
+            }
+            catch
+            {
+                // Ignore transient visual-tree exceptions when controls are detached mid-walk.
             }
         }
     }
@@ -189,9 +299,16 @@ public static class VisualTreeTranslator
         {
             ApplySlot(node, "ToolTip", tipText, v => ToolTipService.SetToolTip(node, v), toChinese);
         }
-        else if (tip is ToolTip tipControl && tipControl.Content is string tipContent)
+        else if (tip is ToolTip tipControl)
         {
-            ApplySlot(tipControl, "Content", tipContent, v => tipControl.Content = v, toChinese);
+            if (tipControl.Content is string tipContent)
+                ApplySlot(tipControl, "Content", tipContent, v => tipControl.Content = v, toChinese);
+            else if (tipControl.Content is DependencyObject tipDep)
+                WalkSubtree(tipDep, toChinese);
+        }
+        else if (tip is DependencyObject tipObj)
+        {
+            WalkSubtree(tipObj, toChinese);
         }
 
         switch (node)
@@ -209,15 +326,19 @@ public static class VisualTreeTranslator
                 if (tb.Inlines.Count > 1 ||
                     (tb.Inlines.Count == 1 && tb.ReadLocalValue(TextBlock.TextProperty) == DependencyProperty.UnsetValue))
                 {
-                    foreach (var inline in tb.Inlines)
-                    {
-                        if (inline is Run run)
-                            ApplySlot(run, "Text", run.Text, v => run.Text = v, toChinese);
-                    }
+                    TranslateInlines(tb.Inlines, toChinese);
                 }
                 else
                 {
                     ApplySlot(tb, "Text", tb.Text, v => tb.Text = v, toChinese);
+                }
+                break;
+
+            case RichTextBlock rtb:
+                foreach (var block in rtb.Blocks)
+                {
+                    if (block is Paragraph paragraph)
+                        TranslateInlines(paragraph.Inlines, toChinese);
                 }
                 break;
 
@@ -236,6 +357,12 @@ public static class VisualTreeTranslator
                 ApplySlot(tbox, "PlaceholderText", tbox.PlaceholderText, v => tbox.PlaceholderText = v, toChinese);
                 break;
 
+            case PasswordBox pbox:
+                if (pbox.Header is string pboxHeader)
+                    ApplySlot(pbox, "Header", pboxHeader, v => pbox.Header = v, toChinese);
+                ApplySlot(pbox, "PlaceholderText", pbox.PlaceholderText, v => pbox.PlaceholderText = v, toChinese);
+                break;
+
             case AutoSuggestBox asb:
                 if (asb.Header is string asbHeader)
                     ApplySlot(asb, "Header", asbHeader, v => asb.Header = v, toChinese);
@@ -249,6 +376,7 @@ public static class VisualTreeTranslator
                 break;
 
             case ComboBox cb:
+                EnsureComboBoxHooks(cb);
                 if (cb.Header is string cbHeader)
                     ApplySlot(cb, "Header", cbHeader, v => cb.Header = v, toChinese);
                 ApplySlot(cb, "PlaceholderText", cb.PlaceholderText, v => cb.PlaceholderText = v, toChinese);
@@ -266,8 +394,11 @@ public static class VisualTreeTranslator
                 break;
 
             case Expander exp:
+                EnsureExpanderHooks(exp);
                 if (exp.Header is string expHeader)
                     ApplySlot(exp, "Header", expHeader, v => exp.Header = v, toChinese);
+                if (exp.Content is string expContent)
+                    ApplySlot(exp, "Content", expContent, v => exp.Content = v, toChinese);
                 break;
 
             case InfoBar ib:
@@ -303,6 +434,22 @@ public static class VisualTreeTranslator
                 if (cc.Content is string ccContent)
                     ApplySlot(cc, "Content", ccContent, v => cc.Content = v, toChinese);
                 break;
+        }
+    }
+
+    private static void TranslateInlines(InlineCollection inlines, bool toChinese)
+    {
+        foreach (var inline in inlines)
+        {
+            switch (inline)
+            {
+                case Run run:
+                    ApplySlot(run, "Text", run.Text, v => run.Text = v, toChinese);
+                    break;
+                case Span span:
+                    TranslateInlines(span.Inlines, toChinese);
+                    break;
+            }
         }
     }
 
@@ -343,10 +490,18 @@ public static class VisualTreeTranslator
         if (snapshot.ListHooksRegistered) return;
         snapshot.ListHooksRegistered = true;
 
-        lvb.ContainerContentChanging += static (_, args) =>
+        lvb.ContainerContentChanging += static (sender, args) =>
         {
-            if (args.InRecycleQueue || args.ItemContainer == null) return;
-            WalkSubtree(args.ItemContainer, L10nService.IsChinese);
+            try
+            {
+                if (args.InRecycleQueue || args.ItemContainer == null) return;
+                if (sender is ListViewBase list && !list.IsLoaded) return;
+                WalkSubtree(args.ItemContainer, L10nService.IsChinese);
+            }
+            catch (Exception ex)
+            {
+                CrashReporter.Log($"[ForkL10n] ListView ContainerContentChanging failed — {ex.Message}");
+            }
         };
     }
 
@@ -356,10 +511,18 @@ public static class VisualTreeTranslator
         if (snapshot.ListHooksRegistered) return;
         snapshot.ListHooksRegistered = true;
 
-        ir.ElementPrepared += static (_, args) =>
+        ir.ElementPrepared += static (sender, args) =>
         {
-            if (args.Element != null)
+            try
+            {
+                if (args.Element == null) return;
+                if (sender is ItemsRepeater repeater && !repeater.IsLoaded) return;
                 WalkSubtree(args.Element, L10nService.IsChinese);
+            }
+            catch (Exception ex)
+            {
+                CrashReporter.Log($"[ForkL10n] ItemsRepeater ElementPrepared failed — {ex.Message}");
+            }
         };
     }
 
@@ -372,6 +535,7 @@ public static class VisualTreeTranslator
     {
         if (string.IsNullOrEmpty(currentValue)) return;
 
+        string targetLang = toChinese ? L10nService.LangZhCn : L10nService.LangEnUs;
         var snapshot = Snapshots.GetOrCreateValue(target);
         if (snapshot.Slots.TryGetValue(slotKey, out var slot))
         {
@@ -379,13 +543,13 @@ public static class VisualTreeTranslator
 
             if (string.Equals(currentValue, slot.LastApplied, StringComparison.Ordinal))
             {
+                // O(1) skip when both text and target language are unchanged.
+                if (string.Equals(slot.EvaluatedLang, targetLang, StringComparison.Ordinal))
+                    return;
+
+                slot.EvaluatedLang = targetLang;
                 if (toChinese)
                 {
-                    // Already translated and unchanged: O(1) skip.
-                    if (!string.Equals(slot.LastApplied, slot.Original, StringComparison.Ordinal))
-                        return;
-
-                    // Previously restored to English; re-translate using cached Original.
                     if (L10nService.TryTranslate(slot.Original, out var translated))
                     {
                         WriteSlot(slot, translated, setter);
@@ -403,6 +567,7 @@ public static class VisualTreeTranslator
 
             // Code-behind or container recycling updated the text dynamically.
             slot.Original = currentValue;
+            slot.EvaluatedLang = targetLang;
             if (toChinese && L10nService.TryTranslate(currentValue, out var nextTranslated))
             {
                 WriteSlot(slot, nextTranslated, setter);
@@ -415,7 +580,7 @@ public static class VisualTreeTranslator
         }
 
         // First time seeing this control+slot.
-        var newSlot = new TextSlot(currentValue, currentValue);
+        var newSlot = new TextSlot(currentValue, currentValue, targetLang);
         snapshot.Slots[slotKey] = newSlot;
 
         if (toChinese && L10nService.TryTranslate(currentValue, out var initialTranslated))
@@ -438,18 +603,74 @@ public static class VisualTreeTranslator
         }
     }
 
+    private static void EnsureComboBoxHooks(ComboBox cb)
+    {
+        var snapshot = Snapshots.GetOrCreateValue(cb);
+        if (snapshot.ExpandOrDropDownHooked) return;
+        snapshot.ExpandOrDropDownHooked = true;
+
+        cb.DropDownOpened += static (sender, _) =>
+        {
+            try
+            {
+                if (sender is not ComboBox box || !box.IsLoaded) return;
+                bool toChinese = L10nService.IsChinese;
+                TranslateNode(box, toChinese);
+                var xamlRoot = box.XamlRoot;
+                if (xamlRoot != null)
+                {
+                    foreach (var popup in VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot))
+                    {
+                        if (popup.Child != null)
+                            WalkSubtree(popup.Child, toChinese);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashReporter.Log($"[ForkL10n] ComboBox DropDownOpened failed — {ex.Message}");
+            }
+        };
+    }
+
+    private static void EnsureExpanderHooks(Expander exp)
+    {
+        var snapshot = Snapshots.GetOrCreateValue(exp);
+        if (snapshot.ExpandOrDropDownHooked) return;
+        snapshot.ExpandOrDropDownHooked = true;
+
+        exp.Expanding += static (sender, _) =>
+        {
+            try
+            {
+                if (sender is not Expander expander || !expander.IsLoaded) return;
+                bool toChinese = L10nService.IsChinese;
+                if (expander.Content is DependencyObject contentDep)
+                    WalkSubtree(contentDep, toChinese);
+                else
+                    TranslateNode(expander, toChinese);
+            }
+            catch (Exception ex)
+            {
+                CrashReporter.Log($"[ForkL10n] Expander Expanding failed — {ex.Message}");
+            }
+        };
+    }
+
     private sealed class ElementSnapshot
     {
         public Dictionary<string, TextSlot> Slots { get; } = new(StringComparer.Ordinal);
         public bool TextCallbackRegistered { get; set; }
         public bool ContentCallbackRegistered { get; set; }
         public bool ListHooksRegistered { get; set; }
+        public bool ExpandOrDropDownHooked { get; set; }
     }
 
-    private sealed class TextSlot(string original, string lastApplied)
+    private sealed class TextSlot(string original, string lastApplied, string evaluatedLang)
     {
         public string Original { get; set; } = original;
         public string LastApplied { get; set; } = lastApplied;
+        public string EvaluatedLang { get; set; } = evaluatedLang;
         public bool IsUpdating { get; set; }
     }
 }

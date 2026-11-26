@@ -14,8 +14,13 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   sync-upstream:
+    if: github.ref == 'refs/heads/feat/port-proxy'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -75,6 +80,7 @@ jobs:
           fi
 
   build:
+    if: github.ref == 'refs/heads/feat/port-proxy'
     needs: sync-upstream
     runs-on: windows-latest
     permissions:
@@ -94,6 +100,7 @@ jobs:
       - name: Pre-restore ClrMD (Microsoft.Diagnostics.Runtime) for loose deployment
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $tmpProj = Join-Path $env:RUNNER_TEMP "clrmd-restore.csproj"
           @'
           <Project Sdk="Microsoft.NET.Sdk">
@@ -106,10 +113,12 @@ jobs:
           </Project>
           '@ | Set-Content -Path $tmpProj -Encoding UTF8
           dotnet restore $tmpProj
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Publish RenoDXCommander (Release, win-x64)
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $out = Join-Path $PWD "publish_out"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
 
@@ -136,10 +145,22 @@ jobs:
             Copy-Item -Path $srcFile -Destination $out -Force
           }
           Copy-Item -Path "RenoDXCommander/icon.ico" -Destination $out -Force
+          Copy-Item -Path "RenoDXCommander/7z.exe" -Destination $out -Force
+          Copy-Item -Path "RenoDXCommander/7z.dll" -Destination $out -Force
+          Copy-Item -Path "RenoDXCommander/reshade.rdr2.ini" -Destination $out -Force
 
-      - name: Package portable ZIP
+      - name: Verify publish output and package portable ZIP
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($reqFile in @("RHI.exe", "Microsoft.Diagnostics.Runtime.dll", "7z.exe", "7z.dll", "reshade.rdr2.ini")) {
+            $reqPath = Join-Path "publish_out" $reqFile
+            if (-not (Test-Path $reqPath) -or (Get-Item $reqPath).Length -le 0) {
+              Write-Error "Missing or empty required publish output file: $reqPath"
+              exit 1
+            }
+          }
+
           $zipPath = Join-Path $PWD "RHI-Proxy-win-x64.zip"
           if (Test-Path $zipPath) { Remove-Item $zipPath -Force }
           Compress-Archive -Path "publish_out/*" -DestinationPath $zipPath -CompressionLevel Optimal
@@ -147,6 +168,7 @@ jobs:
       - name: Build Inno Setup installer
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $iscc = $null
           $cmd = Get-Command ISCC.exe -ErrorAction SilentlyContinue
           if ($cmd) {
@@ -187,19 +209,33 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $tag = "proxy-latest"
           $targetSha = "${{ needs.sync-upstream.outputs.target_sha || github.sha }}"
+          $repo = "${{ github.repository }}"
           $notes = "Automated portable + installer build from ``feat/port-proxy`` ($targetSha)."
+
           $exists = $true
+          $prevPref = $ErrorActionPreference
+          $ErrorActionPreference = 'Continue'
           gh release view $tag 2>$null | Out-Null
-          if ($LASTEXITCODE -ne 0) { $exists = $false }
+          $viewExit = $LASTEXITCODE
+          $ErrorActionPreference = $prevPref
+          if ($viewExit -ne 0) { $exists = $false }
 
           if (-not $exists) {
             gh release create $tag "RHI-Proxy-win-x64.zip" "RHI-Setup.exe" `
               --target $targetSha `
               --title "RHI Proxy (Latest)" `
               --notes $notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           } else {
+            gh api -X PATCH "repos/$repo/git/refs/tags/$tag" -f sha="$targetSha" -F force=true
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
             gh release upload $tag "RHI-Proxy-win-x64.zip" "RHI-Setup.exe" --clobber
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
             gh release edit $tag --target $targetSha --notes $notes
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }

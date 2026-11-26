@@ -2472,11 +2472,11 @@
       "replace": "全部更新 ($1)"
     },
     {
-      "pattern": "^Checked (.+) ago$",
+      "pattern": "^Checked (\\d+m|\\d+h|\\d+s) ago$",
       "replace": "$1前已检查"
     },
     {
-      "pattern": "^Checked (\\d+m|\\d+h|\\d+s) ago$",
+      "pattern": "^Checked (.+) ago$",
       "replace": "$1前已检查"
     },
     {
@@ -2580,10 +2580,6 @@
       "replace": "启用按键绑定时，可在游戏内按 $1 切换此项"
     },
     {
-      "pattern": "^Ultra\\+ (.+) · $",
-      "replace": "Ultra+ $1 · "
-    },
-    {
       "pattern": "^Unlocked \\((\\d+)\\)$",
       "replace": "已解锁 ($1)"
     },
@@ -2610,10 +2606,6 @@
     {
       "pattern": "^(\\d+) Gamerscore$",
       "replace": "$1 玩家分数"
-    },
-    {
-      "pattern": "^(.+)  \\((\\d+)\\)$",
-      "replace": "$1  ($2)"
     },
     {
       "pattern": "^(.+) \\(yours\\)$",
@@ -2658,6 +2650,10 @@
     {
       "pattern": "^Added (.+)\\. Pick it in a game's OptiScaler settings\\.$",
       "replace": "已添加 $1。可在游戏的 OptiScaler 设置中选择。"
+    },
+    {
+      "pattern": "^Adding custom OptiScaler build (.+)\\.\\.\\.$",
+      "replace": "正在添加自定义 OptiScaler 构建 $1..."
     },
     {
       "pattern": "^Adding (.+)\\.\\.\\.$",
@@ -2728,12 +2724,16 @@
       "replace": "已删除 $1 个文件，释放了 $2 磁盘空间。"
     },
     {
-      "pattern": "^Deleted (.+)\\.$",
-      "replace": "已删除 $1。"
-    },
-    {
       "pattern": "^Deleted (.+)\\. (\\d+) games? turned off\\.$",
       "replace": "已删除 $1。已关闭 $2 款游戏的该模式。"
+    },
+    {
+      "pattern": "^Deleted saved ini \"(.+)\"\\.$",
+      "replace": "已删除已保存的 ini “$1”。"
+    },
+    {
+      "pattern": "^Deleted (.+)\\.$",
+      "replace": "已删除 $1。"
     },
     {
       "pattern": "^Done at (.+) \\((.+)\\)\\.$",
@@ -2804,6 +2804,10 @@
       "replace": "在游戏内按 $1 即可打开浮层。"
     },
     {
+      "pattern": "^Remove (.+) from RHI\\?$",
+      "replace": "确定从 RHI 中移除 $1 吗？"
+    },
+    {
       "pattern": "^Remove (.+)\\?$",
       "replace": "确定移除 $1 吗？"
     },
@@ -2848,6 +2852,14 @@
       "replace": "已保存（末尾为 $1）"
     },
     {
+      "pattern": "^Saved ini \"(.+)\" replaced\\.$",
+      "replace": "已替换保存的 ini “$1”。"
+    },
+    {
+      "pattern": "^Saved (.+)\\. Restart the game to apply\\.$",
+      "replace": "已保存 $1，重启游戏后生效。"
+    },
+    {
       "pattern": "^Saved (.+)\\.$",
       "replace": "已保存 $1。"
     },
@@ -2866,6 +2878,10 @@
     {
       "pattern": "^Switched (\\d+) games? to (.+)\\.$",
       "replace": "已将 $1 款游戏切换到 $2。"
+    },
+    {
+      "pattern": "^Switching to ReShade (.+) will change it for ALL Vulkan games\\.$",
+      "replace": "切换到 ReShade $1 将同时应用到所有 Vulkan 游戏。"
     },
     {
       "pattern": "^Switching to (.+)$",
@@ -2928,10 +2944,6 @@
       "replace": "$1 Mod 开发中。"
     },
     {
-      "pattern": "^(.+) Mode$",
-      "replace": "$1 模式"
-    },
-    {
       "pattern": "^(\\d+) new Ultra\\+ mods?:$",
       "replace": "$1 个新 Ultra+ Mod："
     },
@@ -2956,12 +2968,20 @@
       "replace": "已添加 $1。可在游戏的 OptiScaler 设置（版本）中选择，或在“设置 › 组件”中设为默认版本。"
     },
     {
-      "pattern": "^Adding custom OptiScaler build (.+)\\.\\.\\.$",
-      "replace": "正在添加自定义 OptiScaler 构建 $1..."
-    },
-    {
       "pattern": "^Are you sure you want to install (.+) for (.+)\\?$",
       "replace": "确定要为 $2 安装 $1 吗？"
+    },
+    {
+      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+)\\. Nothing was deployed\\.$",
+      "replace": "无法下载 nvngx_dlssnr.dll $1，未部署任何文件。"
+    },
+    {
+      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+), so DLSS 5 stays off\\.$",
+      "replace": "无法下载 nvngx_dlssnr.dll $1，DLSS 5 保持关闭。"
+    },
+    {
+      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+)\\. Nothing was installed\\.$",
+      "replace": "无法下载 nvngx_dlssnr.dll $1，未安装任何文件。"
     },
     {
       "pattern": "^Couldn't download (.+)$",
@@ -2974,6 +2994,18 @@
     {
       "pattern": "^Downloaded (.+)$",
       "replace": "已下载 $1"
+    },
+    {
+      "pattern": "^Downloading ReLimiter (.+)\\.\\.\\.$",
+      "replace": "正在下载 ReLimiter $1..."
+    },
+    {
+      "pattern": "^Downloading GITC Uplift v(.+)\\.\\.\\.$",
+      "replace": "正在下载 GITC Uplift v$1..."
+    },
+    {
+      "pattern": "^Downloading nvngx_dlssnr\\.dll (.+)\\.\\.\\.$",
+      "replace": "正在下载 nvngx_dlssnr.dll $1..."
     },
     {
       "pattern": "^Downloading (.+)\\.\\.\\.$",
@@ -3024,6 +3056,10 @@
       "replace": "将 $1 安装到游戏目录。"
     },
     {
+      "pattern": "^Installed: (.+) · Latest: checking\\.\\.\\.$",
+      "replace": "已安装：$1 · 最新版：正在检查..."
+    },
+    {
       "pattern": "^Installed: (.+)$",
       "replace": "已安装：$1"
     },
@@ -3034,10 +3070,6 @@
     {
       "pattern": "^Luma mod detected: (.+)\n\nSelect game to install to:$",
       "replace": "检测到 Luma Mod：$1\n\n请选择要安装到的游戏："
-    },
-    {
-      "pattern": "^Luma — (.+)$",
-      "replace": "Luma — $1"
     },
     {
       "pattern": "^Multiple Addons in '(.+)'$",
@@ -3120,12 +3152,12 @@
       "replace": "已将“$1”添加到您的已保存 ini 列表。"
     },
     {
-      "pattern": "^Added (.+) to (.+)$",
-      "replace": "已将 $1 添加到 $2"
-    },
-    {
       "pattern": "^Added (\\d+) games? to (.+)\\.$",
       "replace": "已将 $1 款游戏添加到 $2。"
+    },
+    {
+      "pattern": "^Added (.+) to (.+)$",
+      "replace": "已将 $1 添加到 $2"
     },
     {
       "pattern": "^Already launching (.+)…$",
@@ -3170,6 +3202,18 @@
     {
       "pattern": "^Couldn't change the version: (.+)$",
       "replace": "无法更改版本：$1"
+    },
+    {
+      "pattern": "^Couldn't change DLSS 5: (.+)$",
+      "replace": "无法更改 DLSS 5：$1"
+    },
+    {
+      "pattern": "^Couldn't change the NR DLL: (.+)$",
+      "replace": "无法更改 NR DLL：$1"
+    },
+    {
+      "pattern": "^Couldn't change the app manifest: (.+)$",
+      "replace": "无法更改应用清单：$1"
     },
     {
       "pattern": "^Couldn't change (.+): (.+)$",
@@ -3284,16 +3328,8 @@
       "replace": "$1 的自定义模式"
     },
     {
-      "pattern": "^Deleted saved ini \"(.+)\"\\.$",
-      "replace": "已删除已保存的 ini “$1”。"
-    },
-    {
       "pattern": "^Display mode: (.+)$",
       "replace": "显示模式：$1"
-    },
-    {
-      "pattern": "^Downloading ReLimiter (.+)\\.\\.\\.$",
-      "replace": "正在下载 ReLimiter $1..."
     },
     {
       "pattern": "^Export failed: (.+)$",
@@ -3328,10 +3364,6 @@
       "replace": "已安装 $1 个组件。"
     },
     {
-      "pattern": "^Installed: (.+) · Latest: checking\\.\\.\\.$",
-      "replace": "已安装：$1 · 最新版：正在检查..."
-    },
-    {
       "pattern": "^Installing ReLimiter (.+)\\.\\.\\.$",
       "replace": "正在安装 ReLimiter $1..."
     },
@@ -3344,12 +3376,12 @@
       "replace": "正在启动 $1…"
     },
     {
-      "pattern": "^Lilium preset set to (.+)\\.$",
-      "replace": "Lilium 预设已设为 $1。"
-    },
-    {
       "pattern": "^Lilium preset set to (.+)\\. dxvk\\.conf updated\\.$",
       "replace": "Lilium 预设已设为 $1，dxvk.conf 已更新。"
+    },
+    {
+      "pattern": "^Lilium preset set to (.+)\\.$",
+      "replace": "Lilium 预设已设为 $1。"
     },
     {
       "pattern": "^Moved (.+)'s mods to the new folder$",
@@ -3376,10 +3408,6 @@
       "replace": "ReShade 将安装为 $1。"
     },
     {
-      "pattern": "^Remove (.+) from RHI\\?$",
-      "replace": "确定从 RHI 中移除 $1 吗？"
-    },
-    {
       "pattern": "^Removed (.+) from (.+)$",
       "replace": "已从 $2 移除 $1"
     },
@@ -3394,10 +3422,6 @@
     {
       "pattern": "^Saved filter: \"(.+)\"\nRight-click to delete\\.$",
       "replace": "已保存的筛选：“$1”\n右键点击可删除。"
-    },
-    {
-      "pattern": "^Saved ini \"(.+)\" replaced\\.$",
-      "replace": "已替换保存的 ini “$1”。"
     },
     {
       "pattern": "^Selected: (.+)$",
@@ -3476,10 +3500,6 @@
       "replace": "在自定义目录中发现 $1 款新游戏 · 查看"
     },
     {
-      "pattern": "^(\\d+) \\((\\d+)Hz VRR\\)$",
-      "replace": "$1 ($2Hz VRR)"
-    },
-    {
       "pattern": "^(\\d+) games ignored$",
       "replace": "已忽略 $1 款游戏"
     },
@@ -3498,10 +3518,6 @@
     {
       "pattern": "^· (\\d+) hidden$",
       "replace": "· 已隐藏 $1 款"
-    },
-    {
-      "pattern": "^❌ (.+)$",
-      "replace": "❌ $1"
     },
     {
       "pattern": "^ \\(Foveated (.+)\\)$",
@@ -3524,12 +3540,12 @@
       "replace": "横幅已设置（作者：$1）。"
     },
     {
-      "pattern": "^Bitness set to (.+)\\.$",
-      "replace": "架构已设为 $1。"
-    },
-    {
       "pattern": "^Bitness set to (.+)\\. The game's bitness changed, so its components were uninstalled: install them again\\.$",
       "replace": "架构已设为 $1。由于游戏位数变化，已卸载原有组件，请重新安装。"
+    },
+    {
+      "pattern": "^Bitness set to (.+)\\.$",
+      "replace": "架构已设为 $1。"
     },
     {
       "pattern": "^Build (.+) available · $",
@@ -3552,32 +3568,8 @@
       "replace": "已复制 $1"
     },
     {
-      "pattern": "^Couldn't change DLSS 5: (.+)$",
-      "replace": "无法更改 DLSS 5：$1"
-    },
-    {
-      "pattern": "^Couldn't change the NR DLL: (.+)$",
-      "replace": "无法更改 NR DLL：$1"
-    },
-    {
-      "pattern": "^Couldn't change the app manifest: (.+)$",
-      "replace": "无法更改应用清单：$1"
-    },
-    {
       "pattern": "^Couldn't delete (.+)$",
       "replace": "无法删除 $1"
-    },
-    {
-      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+)\\. Nothing was deployed\\.$",
-      "replace": "无法下载 nvngx_dlssnr.dll $1，未部署任何文件。"
-    },
-    {
-      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+), so DLSS 5 stays off\\.$",
-      "replace": "无法下载 nvngx_dlssnr.dll $1，DLSS 5 保持关闭。"
-    },
-    {
-      "pattern": "^Couldn't download nvngx_dlssnr\\.dll (.+)\\. Nothing was installed\\.$",
-      "replace": "无法下载 nvngx_dlssnr.dll $1，未安装任何文件。"
     },
     {
       "pattern": "^Cover set \\(by (.+)\\)\\.$",
@@ -3612,14 +3604,6 @@
       "replace": "Direct3D 9 游戏需要 ReShade 6.8 或更高版本（当前游戏为 $1）。"
     },
     {
-      "pattern": "^Downloading GITC Uplift v(.+)\\.\\.\\.$",
-      "replace": "正在下载 GITC Uplift v$1..."
-    },
-    {
-      "pattern": "^Downloading nvngx_dlssnr\\.dll (.+)\\.\\.\\.$",
-      "replace": "正在下载 nvngx_dlssnr.dll $1..."
-    },
-    {
       "pattern": "^Global \\((.+)\\)$",
       "replace": "全局 ($1)"
     },
@@ -3628,12 +3612,12 @@
       "replace": "此游戏的 HDR Mod，作者：$1"
     },
     {
-      "pattern": "^In use by (.+)$",
-      "replace": "正被 $1 占用"
-    },
-    {
       "pattern": "^In use by (.+)\\. Choose a different name\\.$",
       "replace": "正被 $1 占用，请选择其他名称。"
+    },
+    {
+      "pattern": "^In use by (.+)$",
+      "replace": "正被 $1 占用"
     },
     {
       "pattern": "^Installed as: (.+)\nClick to open GitHub releases(?: page)?$",
@@ -3684,10 +3668,6 @@
       "replace": "打开 $1 GitHub 页面"
     },
     {
-      "pattern": "^Open (.+)$",
-      "replace": "打开 $1"
-    },
-    {
       "pattern": "^Reinstall 20/30 FG Unlock \\(currently deployed as (.+)\\)$",
       "replace": "重新安装 20/30 FG Unlock（当前部署为 $1）"
     },
@@ -3724,10 +3704,6 @@
       "replace": "已重命名为 $1，相关设置已一并迁移。"
     },
     {
-      "pattern": "^Saved (.+)\\. Restart the game to apply\\.$",
-      "replace": "已保存 $1，重启游戏后生效。"
-    },
-    {
       "pattern": "^Screenshot (.+)$",
       "replace": "截图 $1"
     },
@@ -3752,10 +3728,6 @@
       "replace": "SteamGridDB 图片，作者：$1"
     },
     {
-      "pattern": "^Switching to ReShade (.+) will change it for ALL Vulkan games\\.$",
-      "replace": "切换到 ReShade $1 将同时应用到所有 Vulkan 游戏。"
-    },
-    {
       "pattern": "^Update available\\. Click to open (.+)\\.$",
       "replace": "有可用更新。点击打开 $1。"
     },
@@ -3778,10 +3750,6 @@
     {
       "pattern": "^dgVoodoo2 v(.+) deployed to the game folder\\.$",
       "replace": "已将 dgVoodoo2 v$1 部署到游戏目录。"
-    },
-    {
-      "pattern": "^(.+) settings$",
-      "replace": "$1 设置"
     },
     {
       "pattern": "^(.+) is on RHI's anti-cheat list\\.$",
@@ -3896,16 +3864,8 @@
       "replace": "此处已安装 $1。FrameWarp 要求关闭帧率限制器。"
     },
     {
-      "pattern": "^ReLimiter — (.+)$",
-      "replace": "ReLimiter — $1"
-    },
-    {
-      "pattern": "^(.+)\\n\\(Vulkan\\)$",
-      "replace": "$1\n(Vulkan)"
-    },
-    {
-      "pattern": "^(\\d+\\.\\d+\\.\\d+) \\(Vulkan\\)$",
-      "replace": "$1 (Vulkan)"
+      "pattern": "^HTTP (\\d+) (.+) \\((\\d+) ms\\)$",
+      "replace": "HTTP $1 $2（$3 ms）"
     }
   ]
 }

@@ -27,9 +27,15 @@ public static class L10nService
     private static readonly object DictionaryLock = new();
     private static readonly object MissingFileLock = new();
     private static readonly ConcurrentDictionary<string, byte> LoggedMissing = new(StringComparer.Ordinal);
+    private static readonly TimeSpan RegexMatchTimeout = TimeSpan.FromMilliseconds(50);
 
-    private static Dictionary<string, string> _exact = new(StringComparer.Ordinal);
-    private static List<(Regex Regex, string Replace)> _patterns = new();
+    private sealed record DictionarySnapshot(
+        IReadOnlyDictionary<string, string> Exact,
+        IReadOnlyList<(Regex Regex, string Replace)> Patterns);
+
+    private static volatile DictionarySnapshot _snapshot = new(
+        new Dictionary<string, string>(StringComparer.Ordinal),
+        Array.Empty<(Regex Regex, string Replace)>());
     private static bool _loaded;
 
     private static readonly HashSet<string> ProperNounAllowlist = new(StringComparer.OrdinalIgnoreCase)
@@ -47,8 +53,9 @@ public static class L10nService
     private static readonly Regex AsciiLetterRegex = new("[A-Za-z]", RegexOptions.Compiled);
     private static readonly Regex CjkRegex = new("[\u4e00-\u9fff]", RegexOptions.Compiled);
     private static readonly Regex FileNameOrPathRegex = new(
-        @"^(?:[A-Za-z]:\\|\\\\|https?://|v?\d+(?:\.\d+)+|0x[0-9A-Fa-f]+|[\w.\-]+\.(?:dll|ini|exe|json|fx|addon\d*|conf|txt|zip|7z))$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        @"^(?:[A-Za-z]:[\\/]|\\\\|https?://|v?\d+(?:\.\d+)+|0x[0-9A-Fa-f]+|(?:\.{1,2}[\\/])?(?:[\w.\-]+[\\/])+[\w.\-]+|(?:[\w.\-]+[\\/])*[\w.\-]+\.(?:dll|ini|exe|json|fx|addon\d*|conf|txt|zip|7z))$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled,
+        TimeSpan.FromMilliseconds(50));
 
     public static string CurrentLanguage { get; private set; }
     public static bool IsChinese => string.Equals(CurrentLanguage, LangZhCn, StringComparison.Ordinal);
@@ -119,8 +126,9 @@ public static class L10nService
         }
 
         EnsureLoaded();
+        var snap = _snapshot;
 
-        if (_exact.TryGetValue(source, out var exactHit))
+        if (snap.Exact.TryGetValue(source, out var exactHit))
         {
             translated = exactHit;
             return true;
@@ -133,24 +141,44 @@ public static class L10nService
             return false;
         }
 
-        if (trimmed.Length != source.Length && _exact.TryGetValue(trimmed, out exactHit))
+        if (trimmed.Length != source.Length && snap.Exact.TryGetValue(trimmed, out exactHit))
         {
             translated = PreserveOuterWhitespace(source, trimmed, exactHit);
             return true;
         }
 
-        foreach (var (regex, replace) in _patterns)
+        foreach (var (regex, replace) in snap.Patterns)
         {
-            if (regex.IsMatch(source))
+            try
             {
-                translated = regex.Replace(source, replace);
-                return !string.Equals(translated, source, StringComparison.Ordinal);
+                var match = regex.Match(source);
+                if (match.Success)
+                {
+                    var candidate = ApplySingleMatch(source, match, replace);
+                    if (!string.Equals(candidate, source, StringComparison.Ordinal))
+                    {
+                        translated = candidate;
+                        return true;
+                    }
+                }
+
+                if (trimmed.Length != source.Length)
+                {
+                    var trimmedMatch = regex.Match(trimmed);
+                    if (trimmedMatch.Success)
+                    {
+                        var replaced = ApplySingleMatch(trimmed, trimmedMatch, replace);
+                        if (!string.Equals(replaced, trimmed, StringComparison.Ordinal))
+                        {
+                            translated = PreserveOuterWhitespace(source, trimmed, replaced);
+                            return true;
+                        }
+                    }
+                }
             }
-            if (trimmed.Length != source.Length && regex.IsMatch(trimmed))
+            catch (RegexMatchTimeoutException)
             {
-                var replaced = regex.Replace(trimmed, replace);
-                translated = PreserveOuterWhitespace(source, trimmed, replaced);
-                return !string.Equals(translated, source, StringComparison.Ordinal);
+                // Skip slow pattern without blocking UI rendering.
             }
         }
 
@@ -159,6 +187,18 @@ public static class L10nService
 
         translated = source;
         return false;
+    }
+
+    private static string ApplySingleMatch(string input, Match match, string replace)
+    {
+        var replacement = match.Result(replace);
+        if (match.Index == 0 && match.Length == input.Length)
+            return replacement;
+
+        return string.Concat(
+            input.AsSpan(0, match.Index),
+            replacement,
+            input.AsSpan(match.Index + match.Length));
     }
 
     public static string Translate(string source) =>
@@ -212,8 +252,7 @@ public static class L10nService
             CrashReporter.Log($"[ForkL10n] Failed to load override zh-CN.override.json — {ex.Message}");
         }
 
-        _exact = exact;
-        _patterns = patterns;
+        _snapshot = new DictionarySnapshot(exact, patterns.ToArray());
     }
 
     private static void MergePayload(
@@ -249,7 +288,7 @@ public static class L10nService
                 if (string.IsNullOrEmpty(rule.Pattern) || rule.Replace == null) continue;
                 try
                 {
-                    var rx = new Regex(rule.Pattern, RegexOptions.CultureInvariant | RegexOptions.Compiled);
+                    var rx = new Regex(rule.Pattern, RegexOptions.CultureInvariant | RegexOptions.Compiled, RegexMatchTimeout);
                     compiled.Add((rx, rule.Replace));
                 }
                 catch (Exception ex)
