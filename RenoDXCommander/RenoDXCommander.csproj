@@ -40,6 +40,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="ForkL10n\zh-CN.json" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Remove="Assets\manifest.json" />
     <!-- Exclude backup files from XAML compilation -->
     <None Remove="original\**" />

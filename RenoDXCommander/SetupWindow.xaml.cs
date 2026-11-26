@@ -110,6 +110,7 @@ public sealed partial class SetupWindow : Window
         }
 
         BuildContent();
+        ForkL10n.VisualTreeTranslator.Attach(this); // [FORK-L10N]
 
         Activated += (_, _) =>
         {

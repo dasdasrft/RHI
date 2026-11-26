@@ -1,17 +1,27 @@
 <!-- [FORK-README-START] -->
-# RHI 中文代理增强版（Fork）
+# RHI 中文增强版（汉化 + 本地代理 Fork）
 
-> 本仓库基于上游 [RankFTW/RHI](https://github.com/RankFTW/RHI)，采用最小侵入方式（仅改动上游 2 行入口）新增了**本地端口代理**功能与 **GitHub Actions 自动同步打包工作流**，方便国内网络环境使用，并可随时无冲突同步上游更新。
+> 本仓库基于上游 [RankFTW/RHI](https://github.com/RankFTW/RHI)，采用最小侵入方式（仅在少数上游入口挂载 1 行钩子，其余全部独立模块化）新增了**全量简体中文汉化引擎**、**本地端口代理**与 **GitHub Actions 自动同步打包工作流**，方便国内网络环境与中文用户使用，并可随时无冲突同步上游更新。
 
 ## 下载与使用
 
 1. 前往本仓库 **Releases (`proxy-latest`)** 下载最新版安装程序（`RHI-Setup.exe`）或便携压缩包（`RHI-Proxy-win-x64.zip`）。
-2. 打开 RHI 后进入 **Settings → Accounts & Data → Network Proxy**，选择代理模式（**System** 跟随系统 / **Direct** 直连 / **HTTP** / **SOCKS5**，默认地址 `127.0.0.1:7890`）。
-3. 点击 **Save & Apply** 即可热生效（无需重启），并可点击 **Test Connection** 测速验证连通性。
+2. **界面语言（默认简体中文）**：
+   - 打开 RHI 即默认以简体中文显示；如需切换回英文原版或恢复中文，可进入 **设置 → 账号与数据源 → 界面语言（Interface Language）** 即时热切换（无需重启）。
+   - 如需记录未命中词典的英文词条，可开启 **记录未翻译词条**（输出至 `%LocalAppData%\RHI\missing_l10n.txt`）；支持通过 `%LocalAppData%\RHI\zh-CN.override.json` 覆盖或补充本地词条。
+3. **网络代理**：
+   - 进入 **设置 → 账号与数据源 → 网络代理（Network Proxy）**，选择代理模式（**系统代理** 跟随系统 / **直连** 不使用代理 / **HTTP** / **SOCKS5**，默认地址 `127.0.0.1:7890`）。
+   - 点击 **保存并应用** 即可热生效（无需重启），并可点击 **测试连接** 测速验证连通性。
 
 ## 中文更新日志（Changelog）
 
-- **2026-11-26**
+- **2026-11-26（汉化引擎 & 滚动防闪烁 Release）**
+  - **新增零冲突全量简体中文汉化引擎**（`RenoDXCommander/ForkL10n/`、`SettingsHandler.Language.cs`）：
+    - 内嵌 `zh-CN.json` 词库（累计 **2,329 条精确匹配** + **354 条动态正则模板**），覆盖主界面、设置页、游戏详情面板、全部弹窗/右键菜单/Tooltip、以及 `OverlayWindow`（游戏内浮层）、`SetupWindow`（首次向导）、`UpdateLogWindow`（组件更新记录）三个独立次级窗口。
+    - 严格保留 `ReShade`、`RenoDX`、`Luma`、`OptiScaler`、`DLSS`、`Streamline`、`Neural Rendering`、`MFG`、`HDR`、`SDR`、`VRR`、`G-Sync`、`ReBAR`、`DLDSR`、`DXVK`、`RTX HDR`、`INI`、`DLL`、`Shader`、`GitHub`、`Steam`、`GOG`、`Epic` 等专业术语。
+    - 列表防闪烁优化：为 `TextBlock` 与 `ContentControl` 挂载同步 `RegisterPropertyChangedCallback` 属性监听，并拦截 `ListViewBase.ContainerContentChanging` 与 `ItemsRepeater.ElementPrepared` 虚拟化容器事件，在当前渲染帧内即时完成中文替换，消除快速滚动时的中英文闪烁。
+    - 支持在 **设置 → 账号与数据源 → 界面语言** 中无重启切换中/英文，支持 `zh-CN.override.json` 本地覆盖与 `missing_l10n.txt` 漏译日志。
+- **2026-11-26（本地代理版上线）**
   - 新增独立本地端口代理模块（`Services/ProxyService.cs`、`SettingsHandler.Proxy.cs`），通过全局 `HttpClient.DefaultProxy` 实现热切换，支持 `System` / `Direct` / `HTTP` / `SOCKS5` 四种模式，配置以 `ForkProxy*` 键名独立持久化。
   - 代理连通性测试改用不受 GitHub API 限流的 `HEAD https://github.com/robots.txt`，避免共享代理 IP 触发 403 限流。
   - 新增独立 GitHub Actions 工作流（`.github/workflows/fork-proxy-build.yml`），支持网页一键同步上游源码并自动编译发布安装版 `.exe` 与便携版 `.zip` 至 `proxy-latest` Release。

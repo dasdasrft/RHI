@@ -72,6 +72,7 @@ internal sealed partial class OverlayWindow : Window
 
         _dashRoot = BuildContent();
         Content = _dashRoot;
+        ForkL10n.VisualTreeTranslator.Attach(this); // [FORK-L10N]
 
         _timer = DispatcherQueue.CreateTimer();
         _timer.Interval = TimeSpan.FromSeconds(1);

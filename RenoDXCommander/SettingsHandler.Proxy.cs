@@ -23,6 +23,7 @@ public partial class SettingsHandler
 
     private void EnsureProxyCard()
     {
+        EnsureLanguageCard(); // [FORK-L10N]
         if (_proxyModeCombo != null)
         {
             RefreshProxyCard();

@@ -347,6 +347,7 @@ public sealed partial class MainWindow : Window
 
         // Tabs layout: mockup top bar, sidebar and footer (no-op in Classic)
         DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, ApplyTabsChrome);
+        ForkL10n.VisualTreeTranslator.Attach(this); // [FORK-L10N]
 
         // If started with --minimized, initialize tray and stay hidden
         if (App._startMinimized)

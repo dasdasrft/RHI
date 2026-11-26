@@ -63,6 +63,7 @@ public sealed class UpdateLogWindow : Window
         }
 
         Content = BuildRoot();
+        ForkL10n.VisualTreeTranslator.Attach(this); // [FORK-L10N]
     }
 
     // ── Layout ────────────────────────────────────────────────────────────
