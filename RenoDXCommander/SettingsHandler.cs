@@ -50,6 +50,7 @@ public partial class SettingsHandler
             _window.LoadingPanel.Visibility = Visibility.Collapsed;
             // Nav column / search / update countdown (one-time setup) + scroll to the last section
             OnSettingsPageOpened(settingsWasOpen);
+            EnsureProxyCard(); // [FORK-PROXY]
             // Sync toggle state with ViewModel
             // (without triggering the change handler, which confirms and redeploys shaders)
             SyncShaderModeCombo();

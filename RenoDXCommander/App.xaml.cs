@@ -25,6 +25,7 @@ public partial class App : Application
         CrashReporter.Register(this);
 
         // Configure DI container
+        ProxyService.Initialize(); // [FORK-PROXY]
         var services = new ServiceCollection();
 
         // Shared HttpClient — singleton with UserAgent header and optimised connection settings
